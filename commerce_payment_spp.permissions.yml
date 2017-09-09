@@ -1,0 +1,3 @@
+administer commerce_payment_spp settings:
+  title: 'Administer Swedbank payment portal settings'
+  'restrict access': TRUE

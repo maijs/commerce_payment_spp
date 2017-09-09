@@ -1,0 +1,18 @@
+swedbank.latvia:
+  label: Swedbank Latvia
+  country: lv
+  service_type_callback: ltvBank
+  payment_method_callback: swedbank
+  supported_languages:
+    - lv
+    - en
+    - ru
+seb.latvia:
+  label: SEB Latvia
+  country: lv
+  service_type_callback: sebLtv
+  payment_method_callback: seb
+  supported_languages:
+    - lv
+    - en
+    - ru

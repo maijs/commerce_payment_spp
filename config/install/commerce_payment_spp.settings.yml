@@ -1,0 +1,11 @@
+environment:
+  test:
+    username: ''
+    password: ''
+    url: 'https://accreditation.datacash.com/Transaction/acq_a'
+  live:
+    username: ''
+    password: ''
+    url: 'https://mars.transaction.datacash.com/Transaction'
+notification:
+  allowed_ips: []

@@ -1,0 +1,5 @@
+commerce_payment_spp.settings:
+  route_name: commerce_payment_spp.settings_form
+  title: Swedbank Payment Portal settings
+  description: 'Configure settings for Swedbank Payment Portal.'
+  parent: entity.commerce_payment_gateway.collection

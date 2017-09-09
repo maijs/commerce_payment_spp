@@ -1,0 +1,34 @@
+<?php
+
+/**
+ * Implements hook_cron().
+ *
+ * Checks pending transactions.
+ */
+function commerce_payment_spp_cron() {
+  /** @var \Drupal\commerce_payment\PaymentGatewayStorageInterface $gateway_storage */
+  $gateway_storage = \Drupal::service('entity_type.manager')->getStorage('commerce_payment_gateway');
+
+  // Get all enabled payment gateways provided by this module.
+  $banklink_gateways = array_filter($gateway_storage->loadMultiple(), function($gateway) {
+    /** @var \Drupal\commerce_payment\Entity\PaymentGatewayInterface $gateway */
+    return $gateway->status() && $gateway->getPlugin()->getPluginId() == 'swedbank_payment_portal_banklink';
+  });
+
+  // Get all enabled environments.
+  $gateway_environments = array_unique(array_values(array_filter(array_map(function($gateway) {
+    /** @var \Drupal\commerce_payment\Entity\PaymentGatewayInterface $gateway */
+    $configuration = $gateway->getPluginConfiguration();
+    return isset($configuration['mode']) ? $configuration['mode'] : NULL;
+  }, $banklink_gateways))));
+
+  foreach ($gateway_environments as $environment) {
+    // @todo Initiate pending transaction check for HPS as follows:
+    // $portal->getPaymentCardHostedPagesGateway()->checkPendingTransactions();
+
+    // Connect to payment portal.
+    /** @var \SwedbankPaymentPortal\SwedbankPaymentPortal $portal */
+    $portal = \Drupal::service('commerce_payment_spp.portal_connector')->connect($environment);
+    $portal->getBankLinkGateway()->checkPendingTransactions();
+  }
+}

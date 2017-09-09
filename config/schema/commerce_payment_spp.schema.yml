@@ -1,0 +1,44 @@
+commerce_payment_spp.settings:
+  type: config_object
+  label: 'Swedbank Payment Portal settings'
+  mapping:
+    environment:
+      type: mapping
+      label: 'Environment settings'
+      mapping:
+        test:
+          type: mapping
+          label: 'Test environment settings'
+          mapping:
+            username:
+              type: string
+              label: 'Test environment username'
+            password:
+              type: string
+              label: 'Test environment password'
+            url:
+              type: uri
+              label: 'Test environment endpoint URL'
+        live:
+          type: mapping
+          label: 'Live environment settings'
+          mapping:
+            username:
+              type: string
+              label: 'Live environment username'
+            password:
+              type: string
+              label: 'Live environment password'
+            url:
+              type: uri
+              label: 'Live environment endpoint URL'
+    notification:
+      type: mapping
+      label: 'Notification settings'
+      mapping:
+        allowed_ips:
+          type: sequence
+          label: 'Allowed IPs'
+          sequence:
+            type: string
+            label: 'IP'

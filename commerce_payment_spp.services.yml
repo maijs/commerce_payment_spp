@@ -1,0 +1,25 @@
+parameters:
+  configuration_key: 'commerce_payment_spp.settings'
+  logger_channel: 'commerce_payment_spp'
+services:
+  commerce_payment_spp.notification_allowed_ips_subscriber:
+    class: Drupal\commerce_payment_spp\EventSubscriber\NotificationAllowedIpsSubscriber
+    arguments: ['@request_stack', '@current_route_match', '@config.factory', '%configuration_key%', '@logger.channel.commerce_payment_spp']
+    tags:
+      - { name: event_subscriber }
+  plugin.manager.commerce_payment_spp.banklink:
+    class: Drupal\commerce_payment_spp\BanklinkManager
+    arguments: ['@module_handler', '@cache.discovery']
+  commerce_payment_spp.price_converter:
+    class: Drupal\commerce_payment_spp\PriceConverter
+  commerce_payment_spp.portal_connector:
+    class: Drupal\commerce_payment_spp\PortalConnector
+    arguments: ['@config.factory', '%configuration_key%', '@commerce_payment_spp.logger']
+  commerce_payment_spp.merchant_reference_generator:
+    class: Drupal\commerce_payment_spp\MerchantReferenceGenerator
+  commerce_payment_spp.logger:
+    class: Drupal\commerce_payment_spp\Logger
+    arguments: ['@logger.channel.commerce_payment_spp']
+  logger.channel.commerce_payment_spp:
+    parent: logger.channel_base
+    arguments: ['%logger_channel%']

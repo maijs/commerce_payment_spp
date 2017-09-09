@@ -1,0 +1,10 @@
+{
+  "name": "drupal/commerce_payment_spp",
+  "type": "drupal-module",
+  "description": "Provides Commerce integration for Swedbank Payment Portal.",
+  "license": "GPL-2.0+",
+  "require": {
+    "drupal/commerce": "~2",
+    "swedbank-spp/swedbank-payment-portal": "~0.8"
+  }
+}

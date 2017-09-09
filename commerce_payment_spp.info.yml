@@ -1,0 +1,7 @@
+name: Commerce Swedbank Payment Portal
+type: module
+description: 'Provides Commerce integration with Swedbank Payment Portal.'
+package: Commerce
+core: 8.x
+dependencies:
+  - commerce:commerce_payment

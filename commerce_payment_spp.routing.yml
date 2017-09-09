@@ -1,0 +1,7 @@
+commerce_payment_spp.settings_form:
+  path: '/admin/commerce/config/payment-gateways/swedbank-payment-portal-settings'
+  defaults:
+    _title: 'Swedbank Payment Portal settings'
+    _form: '\Drupal\commerce_payment_spp\Form\PaymentPortalSettingsForm'
+  requirements:
+    _permission: 'administer commerce_payment_spp settings'
