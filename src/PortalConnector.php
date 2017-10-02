@@ -41,8 +41,7 @@ class PortalConnector implements PortalConnectorInterface {
     $options = new ServiceOptions(
       new CommunicationOptions($environment_values['url']),
       $this->getAuth($mode),
-      $this->logger,
-      1
+      $this->logger
     );
 
     return new SwedbankPaymentPortal($options);
