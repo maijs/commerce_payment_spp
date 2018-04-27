@@ -12,6 +12,8 @@ services:
     arguments: ['@module_handler', '@cache.discovery']
   commerce_payment_spp.price_converter:
     class: Drupal\commerce_payment_spp\PriceConverter
+  commerce_payment_spp.order_token_generator:
+      class: Drupal\commerce_payment_spp\OrderTokenGenerator
   commerce_payment_spp.portal_connector:
     class: Drupal\commerce_payment_spp\PortalConnector
     arguments: ['@config.factory', '%configuration_key%', '@commerce_payment_spp.logger']

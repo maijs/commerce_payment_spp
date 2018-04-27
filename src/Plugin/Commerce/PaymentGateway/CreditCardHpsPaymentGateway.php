@@ -2,6 +2,7 @@
 
 namespace Drupal\commerce_payment_spp\Plugin\Commerce\PaymentGateway;
 
+use Drupal\commerce_payment_spp\OrderTokenGeneratorInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Url;
 use Drupal\Component\Datetime\TimeInterface;
@@ -9,9 +10,11 @@ use Drupal\commerce_order\Entity\OrderInterface;
 use Drupal\commerce_payment\Entity\PaymentInterface;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
+use Drupal\commerce_payment\Exception\PaymentGatewayException;
 use Drupal\commerce_payment_spp\CallbackHandler;
 use Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface;
 use Drupal\commerce_payment_spp\PortalConnectorInterface;
+use Drupal\commerce_payment_spp\Exception\InvalidOrderTokenException;
 use Drupal\profile\Entity\ProfileInterface;
 use Drupal\user\UserInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -82,11 +85,11 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
   /** @var \Drupal\commerce_payment_spp\PortalConnectorInterface $portalConnector */
   protected $portalConnector;
 
-  /** @var \Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface $merchantReferenceGenerator */
-  protected $merchantReferenceGenerator;
-
   /** @var \CommerceGuys\Addressing\Country\CountryRepositoryInterface $countryRepository */
   protected $countryRepository;
+
+  /** @var \Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface $merchantReferenceGenerator */
+  protected $merchantReferenceGenerator;
 
   /**
    * CreditCardHpsPaymentGateway constructor.
@@ -100,15 +103,16 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
    * @param \Drupal\Component\Datetime\TimeInterface $time
    * @param \Symfony\Component\HttpFoundation\RequestStack $requestStack
    * @param \Drupal\commerce_payment_spp\PortalConnectorInterface $portal_connector
-   * @param \Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface $merchant_reference_generator
    * @param \CommerceGuys\Addressing\Country\CountryRepositoryInterface $country_repository
+   * @param \Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface $merchant_reference_generator
+   * @param \Drupal\commerce_payment_spp\OrderTokenGeneratorInterface $order_token_generator
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, RequestStack $requestStack, PortalConnectorInterface $portal_connector, MerchantReferenceGeneratorInterface $merchant_reference_generator, CountryRepositoryInterface $country_repository) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, RequestStack $requestStack, PortalConnectorInterface $portal_connector, CountryRepositoryInterface $country_repository, MerchantReferenceGeneratorInterface $merchant_reference_generator, OrderTokenGeneratorInterface $order_token_generator) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time, $order_token_generator);
     $this->request = $requestStack->getCurrentRequest();
     $this->portalConnector = $portal_connector;
-    $this->merchantReferenceGenerator = $merchant_reference_generator;
     $this->countryRepository = $country_repository;
+    $this->merchantReferenceGenerator = $merchant_reference_generator;
   }
 
   /**
@@ -125,8 +129,9 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
       $container->get('datetime.time'),
       $container->get('request_stack'),
       $container->get('commerce_payment_spp.portal_connector'),
+      $container->get('address.country_repository'),
       $container->get('commerce_payment_spp.merchant_reference_generator'),
-      $container->get('address.country_repository')
+      $container->get('commerce_payment_spp.order_token_generator')
     );
   }
 
@@ -134,14 +139,23 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
    * {@inheritdoc}
    */
   public function onReturn(OrderInterface $order, Request $request) {
-    $merchant_reference = $request->query->get('merchant_reference');
+    try {
+      // Validate return request.
+      $this->validateReturnRequest($order, $request);
 
-    // Connect to payment portal.
-    $portal = $this->portalConnector->connect($this->getMode());
+      // Get merchant reference.
+      $merchant_reference = $request->query->get('merchant_reference');
 
-    // Handle pending transactions. To complete the purchase, set the logic
-    // in callback handler class.
-    $portal->getPaymentCardHostedPagesGateway()->handlePendingTransaction($merchant_reference);
+      // Connect to payment portal.
+      $portal = $this->portalConnector->connect($this->getMode());
+
+      // Handle pending transactions. To complete the purchase, set the logic
+      // in callback handler class.
+      $portal->getPaymentCardHostedPagesGateway()->handlePendingTransaction($merchant_reference);
+    }
+    catch (InvalidOrderTokenException $e) {
+      throw new PaymentGatewayException($e->getMessage());
+    }
   }
 
   /**
@@ -150,20 +164,28 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
   public function createPurchaseRequest(PaymentInterface $payment) {
     /** @var \Drupal\commerce_price\Price $price $amount */
     $amount = $payment->getAmount();
+
     /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
     $order = $payment->getOrder();
+
     /** @var \Drupal\user\UserInterface $customer */
     $customer = $order->getCustomer();
+
     /** @var \Drupal\profile\Entity\ProfileInterface $billing_profile */
     $billing_profile = $order->getBillingProfile();
+
     /** @var \Drupal\profile\Entity\ProfileInterface|null $shipping_profile */
     $shipping_profile = $this->getShippingProfile($order);
 
     // Create merchant reference.
     $merchant_reference = $this->merchantReferenceGenerator->createMerchantReference($order);
 
+    // Generate order token.
+    $order_token = $this->orderTokenGenerator->get($order);
+
     // Create URL options.
     $url_options['query']['merchant_reference'] = $merchant_reference;
+    $url_options['query']['order_token'] = $order_token;
 
     // Connect to payment portal.
     $portal = $this->portalConnector->connect($this->getMode());
@@ -221,7 +243,7 @@ class CreditCardHpsPaymentGateway extends PaymentGatewayBase {
 
     return $portal->getPaymentCardHostedPagesGateway()->initPayment(
       $setupRequest,
-      new CallbackHandler($merchant_reference, $order->id(), $this->getPluginId(), $payment->getPaymentGatewayId())
+      new CallbackHandler($merchant_reference, $order->id(), $order_token)
     );
   }
 
