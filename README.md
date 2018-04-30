@@ -1,24 +1,22 @@
 # Commerce Swedbank Payment Portal
 
-This module integrates [Swedbank Payment Portal](https://www.swedbank.lv/business/cash/ecommerce/paymentPortal?language=ENG) payment methods (banklink, credit card) as payment gateways in [Drupal
-Commerce](https://www.drupal.org/project/commerce).
+This module integrates [Swedbank Payment Portal](https://www.swedbank.lv/business/cash/ecommerce/paymentPortal?language=ENG)
+payment methods (banklink, credit card) as payment gateways with [Drupal Commerce](https://www.drupal.org/project/commerce).
+
+## Requirements
+
+This module depends on [Swedbank Payment Portal API library for PHP](https://github.com/Swedbank-SPP/swedbank-payment-portal).
 
 ## Installation
 
-1. Add the following dependency in your `composer.json` file:
-    ```json
-    "require": {
-        "drupal/commerce_payment_spp": "@dev"
-    }
-    ```
-    and run `composer update`.
+1. Run <code>composer require drupal/commerce_payment_spp</code> in your Drupal project to download the module. This
+will automatically install [Swedbank Payment Portal API library for PHP](https://github.com/Swedbank-SPP/swedbank-payment-portal).
 
-    Alternatively you can add dependency directly by running `composer require drupal/commerce_payment_spp:@dev`.
-
-2. Install module `Commerce Swedbank Payment Portal`.
+2. Install the module by running `drush en -y commerce_payment_spp`.
 
 ## Configuration
 
 1. Go to `/admin/commerce/config/payment-gateways/add`.
 2. Select the preferred payment gateway (banklink, credit card).
-3. Go to `/admin/commerce/config/payment-gateways/swedbank-payment-portal-settings` and input Swedbank credentials.
+3. Go to `/admin/commerce/config/payment-gateways/swedbank-payment-portal-settings` and enter your Swedbank Payment
+Portal credentials.
