@@ -2,22 +2,25 @@
 
 namespace Drupal\commerce_payment_spp\Plugin\Commerce\PaymentGateway;
 
-use Drupal\commerce_payment\Entity\PaymentInterface;
-use Drupal\commerce_payment_spp\CallbackHandler;
-use Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface;
-use Drupal\commerce_payment_spp\PriceConverterInterface;
-use SwedbankPaymentPortal\BankLink\PurchaseBuilder;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\HttpFoundation\Request;
 use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\commerce_order\Entity\OrderInterface;
+use Drupal\commerce_payment\Entity\PaymentInterface;
+use Drupal\commerce_payment\Exception\PaymentGatewayException;
+use Drupal\commerce_payment_spp\CallbackHandler;
+use Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface;
+use Drupal\commerce_payment_spp\OrderTokenGeneratorInterface;
+use Drupal\commerce_payment_spp\PriceConverterInterface;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment_spp\BanklinkManagerInterface;
 use Drupal\commerce_payment_spp\PortalConnectorInterface;
+use Drupal\commerce_payment_spp\Exception\InvalidOrderTokenException;
+use SwedbankPaymentPortal\BankLink\PurchaseBuilder;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Provides the off-site Swedbank payment portal payment gateway.
@@ -63,9 +66,10 @@ class BanklinkPaymentGateway extends PaymentGatewayBase implements BanklinkPayme
    * @param \Drupal\commerce_payment_spp\PortalConnectorInterface $portal_connector
    * @param \Drupal\commerce_payment_spp\PriceConverterInterface $price_converter
    * @param \Drupal\commerce_payment_spp\MerchantReferenceGeneratorInterface $merchant_reference_generator
+   * @param \Drupal\commerce_payment_spp\OrderTokenGeneratorInterface $order_token_generator
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, BanklinkManagerInterface $banklink_manager, PortalConnectorInterface $portal_connector, PriceConverterInterface $price_converter, MerchantReferenceGeneratorInterface $merchant_reference_generator) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, BanklinkManagerInterface $banklink_manager, PortalConnectorInterface $portal_connector, PriceConverterInterface $price_converter, MerchantReferenceGeneratorInterface $merchant_reference_generator, OrderTokenGeneratorInterface $order_token_generator) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time, $order_token_generator);
     $this->banklinkManager = $banklink_manager;
     $this->portalConnector = $portal_connector;
     $this->currencyStorage = $entity_type_manager->getStorage('commerce_currency');
@@ -88,7 +92,8 @@ class BanklinkPaymentGateway extends PaymentGatewayBase implements BanklinkPayme
       $container->get('plugin.manager.commerce_payment_spp.banklink'),
       $container->get('commerce_payment_spp.portal_connector'),
       $container->get('commerce_payment_spp.price_converter'),
-      $container->get('commerce_payment_spp.merchant_reference_generator')
+      $container->get('commerce_payment_spp.merchant_reference_generator'),
+      $container->get('commerce_payment_spp.order_token_generator')
     );
   }
 
@@ -150,21 +155,23 @@ class BanklinkPaymentGateway extends PaymentGatewayBase implements BanklinkPayme
    * {@inheritdoc}
    */
   public function onReturn(OrderInterface $order, Request $request) {
-    $merchant_reference = $request->query->get('merchant_reference');
+    try {
+      // Validate return request.
+      $this->validateReturnRequest($order, $request);
 
-    // Connect to payment portal.
-    $portal = $this->portalConnector->connect($this->getMode());
+      // Get merchant reference.
+      $merchant_reference = $request->query->get('merchant_reference');
 
-    // Handle pending transactions. To complete the purchase, set the logic
-    // in callback handler class.
-    $portal->getBankLinkGateway()->handlePendingTransaction($merchant_reference);
-  }
+      // Connect to payment portal.
+      $portal = $this->portalConnector->connect($this->getMode());
 
-  /**
-   * {@inheritdoc}
-   */
-  public function onCancel(OrderInterface $order, Request $request) {
-    parent::onCancel($order, $request);
+      // Handle pending transactions. To complete the purchase, set the logic
+      // in callback handler class.
+      $portal->getBankLinkGateway()->handlePendingTransaction($merchant_reference);
+    }
+    catch (InvalidOrderTokenException $e) {
+      throw new PaymentGatewayException($e->getMessage());
+    }
   }
 
   /**
@@ -192,22 +199,30 @@ class BanklinkPaymentGateway extends PaymentGatewayBase implements BanklinkPayme
   public function createPurchaseRequest(PaymentInterface $payment) {
     /** @var \Drupal\commerce_price\Price $price $amount */
     $amount = $payment->getAmount();
+
     /** @var \Drupal\commerce_price\Entity\CurrencyInterface $currency */
     $currency = $this->currencyStorage->load($amount->getCurrencyCode());
+
     /** @var \Drupal\commerce_order\Entity\OrderInterface $order */
     $order = $payment->getOrder();
+
     /** @var \Drupal\commerce_payment_spp\Plugin\Commerce\SwedbankPaymentPortal\Banklink\BanklinkInterface $banklink */
     $banklink = $this->getBanklinkPlugin();
 
     // Create merchant reference.
     $merchant_reference = $this->merchantReferenceGenerator->createMerchantReference($order);
 
+    // Generate order token.
+    $order_token = $this->orderTokenGenerator->get($order);
+
     // Create URL options.
     $url_options['query']['merchant_reference'] = $merchant_reference;
+    $url_options['query']['order_token'] = $order_token;
 
     // Connect to payment portal.
     $portal = $this->portalConnector->connect($this->getMode());
 
+    // Create purchase request.
     $purchase_request = (new PurchaseBuilder())
       ->setDescription(sprintf('%s (%s)', $order->getStore()->getName(), $merchant_reference))
       ->setAmountValue($this->priceConverter->convertDecimalToInteger($amount))
@@ -225,7 +240,7 @@ class BanklinkPaymentGateway extends PaymentGatewayBase implements BanklinkPayme
 
     return $portal->getBankLinkGateway()->initPayment(
       $purchase_request,
-      new CallbackHandler($merchant_reference, $order->id(), $this->getPluginId(), $payment->getPaymentGatewayId())
+      new CallbackHandler($merchant_reference, $order->id(), $order_token)
     );
   }
 

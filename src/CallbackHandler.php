@@ -18,15 +18,20 @@ class CallbackHandler implements CallbackInterface {
   /** @var integer $order_id */
   private $order_id;
 
+  /** @var string $order_token */
+  private $order_token;
+
   /**
    * CallbackHandler constructor.
    *
    * @param $merchant_reference
    * @param $order_id
+   * @param $order_token
    */
-  public function __construct($merchant_reference, $order_id) {
+  public function __construct($merchant_reference, $order_id, $order_token) {
     $this->merchant_reference = $merchant_reference;
     $this->order_id = $order_id;
+    $this->order_token = $order_token;
   }
 
   /**
@@ -70,6 +75,7 @@ class CallbackHandler implements CallbackInterface {
       [
         'merchant_reference' => $this->merchant_reference,
         'order_id' => $this->order_id,
+        'order_token' => $this->order_token,
       ]
     );
   }
@@ -82,6 +88,7 @@ class CallbackHandler implements CallbackInterface {
 
     $this->merchant_reference = $data->merchant_reference;
     $this->order_id = $data->order_id;
+    $this->order_token = $data->order_token;
   }
 
 }

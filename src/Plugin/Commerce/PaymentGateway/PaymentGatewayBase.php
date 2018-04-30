@@ -2,16 +2,44 @@
 
 namespace Drupal\commerce_payment_spp\Plugin\Commerce\PaymentGateway;
 
+use Drupal\Component\Datetime\TimeInterface;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Url;
 use Drupal\commerce_order\Entity\OrderInterface;
+use Drupal\commerce_payment\PaymentMethodTypeManager;
+use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGatewayBase;
+use Drupal\commerce_payment_spp\OrderTokenGeneratorInterface;
+use Drupal\commerce_payment_spp\Exception\InvalidOrderTokenException;
 use SwedbankPaymentPortal\SharedEntity\Type\TransactionResult;
 use SwedbankPaymentPortal\Transaction\TransactionFrame;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Class PaymentGatewayBase
  */
 abstract class PaymentGatewayBase extends OffsitePaymentGatewayBase implements SwedbankPaymentGatewayInterface {
+
+  /** @var \Drupal\commerce_payment_spp\OrderTokenGeneratorInterface $orderTokenGenerator */
+  protected $orderTokenGenerator;
+
+  /**
+   * PaymentGatewayBase constructor.
+   *
+   * @param array $configuration
+   * @param string $plugin_id
+   * @param mixed $plugin_definition
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   * @param \Drupal\commerce_payment\PaymentTypeManager $payment_type_manager
+   * @param \Drupal\commerce_payment\PaymentMethodTypeManager $payment_method_type_manager
+   * @param \Drupal\Component\Datetime\TimeInterface $time
+   * @param \Drupal\commerce_payment_spp\OrderTokenGeneratorInterface $order_token_generator
+   */
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, OrderTokenGeneratorInterface $order_token_generator) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+
+    $this->orderTokenGenerator = $order_token_generator;
+  }
 
   /**
    * {@inheritdoc}
@@ -54,6 +82,29 @@ abstract class PaymentGatewayBase extends OffsitePaymentGatewayBase implements S
       ]);
     } catch (\Exception $e) {
       watchdog_exception('commerce_payment_spp', $e);
+    }
+  }
+
+  /**
+   * Validates return request.
+   *
+   * Return request should contain order token which is generated when
+   * purchase request was created.
+   *
+   * @param \Drupal\commerce_order\Entity\OrderInterface $order
+   * @param \Symfony\Component\HttpFoundation\Request $request
+   *
+   * @throws \Drupal\commerce_payment_spp\Exception\InvalidOrderTokenException
+   *
+   * @see \Drupal\commerce_payment_spp\Plugin\Commerce\PaymentGateway\BanklinkPaymentGateway::createPurchaseRequest()
+   * @see \Drupal\commerce_payment_spp\Plugin\Commerce\PaymentGateway\CreditCardHpsPaymentGateway::createPurchaseRequest()
+   */
+  protected function validateReturnRequest(OrderInterface $order, Request $request) {
+    // Order token should be a string, hence the default value is set to "".
+    $order_token = $request->query->get('order_token', '');
+
+    if (!$this->orderTokenGenerator->validate($order_token, $order)) {
+      throw new InvalidOrderTokenException(sprintf('Order token "%s" is not valid for this request (order ID %d).', $order_token, $order->id()));
     }
   }
 
